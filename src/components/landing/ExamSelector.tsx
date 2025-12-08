@@ -20,6 +20,7 @@ const examIcons: Record<string, string> = {
   ibps_po: "🏧",
   ibps_clerk: "🏧",
   lic_aao: "🛡️",
+  current_affairs: "🌍",
 };
 
 const fallbackExams: Exam[] = [
@@ -31,6 +32,7 @@ const fallbackExams: Exam[] = [
   { id: "6", code: "ibps_po", name: "IBPS PO", description: "IBPS Probationary Officer", related_categories: [], is_active: true, created_at: "" },
   { id: "7", code: "ibps_clerk", name: "IBPS Clerk", description: "IBPS Clerk Exam", related_categories: [], is_active: true, created_at: "" },
   { id: "8", code: "lic_aao", name: "LIC AAO", description: "LIC AAO Exam", related_categories: [], is_active: true, created_at: "" },
+  { id: "9", code: "current_affairs", name: "Current Affairs", description: "General Awareness & News", related_categories: [], is_active: true, created_at: "" },
 ];
 
 const ExamSelector = ({ selectedExams, onExamsChange }: ExamSelectorProps) => {

@@ -303,6 +303,41 @@ async function scrapeAffairsCloud(): Promise<ArticleItem[]> {
   }
 }
 
+async function scrapeTheHinduOpinions(): Promise<ArticleItem[]> {
+  console.log("Scraping The Hindu Opinions...");
+  const url = 'https://www.thehindu.com/opinion/feeder/default.rss';
+  try {
+    const response = await fetch(url);
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+
+    const articles: ArticleItem[] = [];
+
+    $("item").each((_, element) => {
+      const title = $(element).find("title").text();
+      const link = $(element).find("link").text();
+      const pubDate = $(element).find("pubDate").text();
+      const desc = $(element).find("description").text();
+
+      if (title && link) {
+        articles.push({
+          title: title.trim(),
+          url: link.trim(),
+          source: "The Hindu Opinion",
+          category: "current_affairs", // Will map to Current Affairs exam
+          published_at: new Date(pubDate),
+          original_summary: desc.substring(0, 500) + "..."
+        });
+      }
+    });
+
+    return articles.slice(0, 10);
+  } catch (e) {
+    console.error("Error scraping The Hindu:", e);
+    return [];
+  }
+}
+
 // --- MAIN HANDLER ---
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -323,14 +358,15 @@ serve(async (req) => {
       scrapeSSC(),
       scrapeIBPS(),
       scrapeLIC(),
-      scrapeAffairsCloud() // New Source
+      scrapeAffairsCloud(),
+      scrapeTheHinduOpinions() // New Source
     ]);
 
     let totalSaved = 0;
     const details = [];
 
     // Names for logging
-    const names = ['RBI Notif', 'RBI Press', 'SEBI', 'NABARD', 'PIB', 'SSC', 'IBPS', 'LIC', 'AffairsCloud'];
+    const names = ['RBI Notif', 'RBI Press', 'SEBI', 'NABARD', 'PIB', 'SSC', 'IBPS', 'LIC', 'AffairsCloud', 'The Hindu'];
 
     for (let i = 0; i < results.length; i++) {
       const res = results[i];

@@ -1,4 +1,4 @@
-export type ExamType = 
+export type ExamType =
   | 'rbi_grade_b'
   | 'sebi_grade_a'
   | 'nabard_grade_a'
@@ -9,9 +9,10 @@ export type ExamType =
   | 'ibps_po'
   | 'ibps_clerk'
   | 'lic_aao'
+  | 'current_affairs'
   | 'other';
 
-export type ContentCategory = 
+export type ContentCategory =
   | 'rbi_circulars'
   | 'government_schemes'
   | 'economy'
