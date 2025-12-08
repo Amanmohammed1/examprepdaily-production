@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from 'https://esm.sh/resend@2.0.0';
+import nodemailer from 'npm:nodemailer@6.9.13';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,13 +66,9 @@ serve(async (req) => {
   }
 
   try {
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    const gmailUser = Deno.env.get('GMAIL_USER');
+    const gmailPass = Deno.env.get('GMAIL_APP_PASSWORD');
 
-    if (!resendApiKey) {
-      throw new Error('Missing RESEND_API_KEY');
-    }
-
-    const resend = new Resend(resendApiKey);
     const { email }: WelcomeRequest = await req.json();
 
     if (!email) {
@@ -82,22 +78,26 @@ serve(async (req) => {
       );
     }
 
+    // SMTP Transporter
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+    });
+
     console.log(`Sending welcome email to ${email}`);
 
-    const { data, error } = await resend.emails.send({
-      from: 'ExamPrep Daily <onboarding@resend.dev>',
-      to: [email],
+    await transporter.sendMail({
+      from: `"ExamPrep Daily" <${gmailUser}>`,
+      to: email,
       subject: 'Welcome to ExamPrep Daily! 🚀',
       html: welcomeTemplate,
     });
 
-    if (error) {
-      console.error('Resend error:', error);
-      throw error;
-    }
-
     return new Response(
-      JSON.stringify({ success: true, data }),
+      JSON.stringify({ success: true }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

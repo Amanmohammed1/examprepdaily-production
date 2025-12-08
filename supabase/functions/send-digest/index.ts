@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { Resend } from 'https://esm.sh/resend@2.0.0';
+import nodemailer from 'npm:nodemailer@6.9.13';
 import { generateEmailHtml } from './email-template.ts';
 
 const corsHeaders = {
@@ -16,11 +16,19 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
+    const gmailUser = Deno.env.get('GMAIL_USER');
+    const gmailPass = Deno.env.get('GMAIL_APP_PASSWORD');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const resend = new Resend(resendApiKey);
 
+    // SMTP Transporter
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+    });
 
     let testEmail: string | null = null;
     try {
@@ -40,6 +48,7 @@ serve(async (req) => {
 
     if (!testEmail) {
       // Only enforce verification for production runs, or test runs if you want
+      // For Gmail, verification isn't strictly tracked by us, but we respect the flag
       query = query.eq('is_verified', true);
     } else {
       query = query.eq('email', testEmail);
@@ -129,8 +138,8 @@ serve(async (req) => {
           // Fallback for "No Articles" - ONLY for test emails to prove it works
           if (testEmail) {
             console.log("No articles found, forcing a dummy email for test.");
-            html = `<html><body><h1>System Working! ✅</h1><p>We found 0 new articles today, but your email delivery system is working perfectly.</p></body></html>`;
-            subject = `✅ Test Delivery Success - ${today}`;
+            html = `<html><body><h1>System Working! ✅</h1><p>We found 0 new articles today, but your email delivery system is working perfectly via Gmail.</p></body></html>`;
+            subject = `✅ Test System Check - ${today}`;
             relevantArticles = [{ title: 'System Check' }]; // Dummy to pass counts
           } else {
             console.log(`No articles for ${subscriber.email}`);
@@ -158,20 +167,13 @@ serve(async (req) => {
           subject = `📬 Your Daily Digest - ${today} (${relevantArticles.length} updates)`;
         }
 
-        const { error: emailError } = await resend.emails.send({
-          from: 'ExamPrep Daily <onboarding@resend.dev>',
-          to: [subscriber.email],
-          subject: subject,
-          html: html,
+        // Send via Nodemailer
+        await transporter.sendMail({
+          from: `"ExamPrep Daily" <${gmailUser}>`, // sender address
+          to: subscriber.email, // list of receivers
+          subject: subject, // Subject line
+          html: html, // html body
         });
-
-        if (emailError) {
-          console.error(`Error sending to ${subscriber.email}:`, emailError);
-          if (testEmail) {
-            throw new Error(`Resend Error: ${JSON.stringify(emailError)}`);
-          }
-          continue;
-        }
 
         const emailSubject = `Daily Digest - ${today}`;
         // Log the email

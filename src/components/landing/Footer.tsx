@@ -1,4 +1,4 @@
-import { Mail, Heart } from "lucide-react";
+import { Mail, Heart, Linkedin, Twitter } from "lucide-react";
 
 const Footer = () => {
   return (
@@ -7,16 +7,16 @@ const Footer = () => {
         <div className="max-w-4xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
-                <Mail className="w-5 h-5 text-primary-foreground" />
-              </div>
               <span className="font-heading font-bold text-xl">ExamPrep Daily</span>
             </div>
 
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <a href="#features" className="hover:text-foreground transition-colors">Features</a>
               <a href="#subscribe" className="hover:text-foreground transition-colors">Subscribe</a>
-              <a href="mailto:support@examprepdaily.com" className="hover:text-foreground transition-colors">Contact</a>
+              <a href="https://www.linkedin.com/in/aman-mohammed-2182b51b9/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors font-medium">
+                <span>If you love my work, let's connect</span>
+                <Linkedin className="w-5 h-5" />
+              </a>
             </div>
           </div>
 

@@ -13,6 +13,7 @@ interface ArticleItem {
   published_at: string | Date;
   source: string;
   category: string;
+  original_summary?: string;
 }
 
 // Helper to parse dates loosely
@@ -44,7 +45,8 @@ async function saveArticles(supabase: any, articles: ArticleItem[]) {
           category: item.category,
           published_at: new Date(item.published_at).toISOString(),
           fetched_at: new Date().toISOString(),
-          is_processed: false
+          is_processed: false,
+          summary: item.original_summary || null // Pre-fill summary if available
         });
         if (!error) savedCount++;
       }
@@ -253,6 +255,54 @@ async function scrapeLIC(): Promise<ArticleItem[]> {
   return [];
 }
 
+async function scrapeAffairsCloud(): Promise<ArticleItem[]> {
+  console.log("Scraping AffairsCloud Current Affairs...");
+  try {
+    const response = await fetch("https://www.affairscloud.com/current-affairs/feed/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ExamPrepBot/1.0)",
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`AffairsCloud HTTP error: ${response.status}`);
+      return [];
+    }
+
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+
+    const articles: ArticleItem[] = [];
+
+    $("item").each((_, element) => {
+      const title = $(element).find("title").text();
+      const link = $(element).find("link").text();
+      const pubDate = $(element).find("pubDate").text();
+      const content = $(element).find("content\\:encoded").text() || $(element).find("description").text();
+
+      // Basic dedupe logic
+      if (title) {
+        articles.push({
+          title: title.trim(),
+          url: link.trim(),
+          source: "AffairsCloud",
+          category: "current_affairs",
+          published_at: new Date(pubDate), // Convert to Date object
+          original_summary: content.substring(0, 500) + "...",
+          // is_processed: false // This field is not part of ArticleItem
+        });
+      }
+    });
+
+    console.log(`AffairsCloud: Found ${articles.length} articles.`);
+    return articles;
+
+  } catch (error) {
+    console.error("Error scraping AffairsCloud:", error);
+    return [];
+  }
+}
+
 // --- MAIN HANDLER ---
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -272,14 +322,15 @@ serve(async (req) => {
       scrapePIB(),
       scrapeSSC(),
       scrapeIBPS(),
-      scrapeLIC()
+      scrapeLIC(),
+      scrapeAffairsCloud() // New Source
     ]);
 
     let totalSaved = 0;
     const details = [];
 
     // Names for logging
-    const names = ['RBI Notif', 'RBI Press', 'SEBI', 'NABARD', 'PIB', 'SSC', 'IBPS', 'LIC'];
+    const names = ['RBI Notif', 'RBI Press', 'SEBI', 'NABARD', 'PIB', 'SSC', 'IBPS', 'LIC', 'AffairsCloud'];
 
     for (let i = 0; i < results.length; i++) {
       const res = results[i];
