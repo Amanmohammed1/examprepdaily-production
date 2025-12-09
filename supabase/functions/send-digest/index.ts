@@ -70,52 +70,43 @@ serve(async (req) => {
     }
 
     // Get processed articles
-    // SMART WINDOW: Default to 24h, but fallback if empty
+    // SMART WINDOW: Increased to 48h to ensure volume.
     const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setDate(yesterday.getDate() - 2); // 48h window
 
-    // First pass: standard 24h window
+    // First pass: standard query
     let query24h = supabase
       .from('articles')
       .select('*')
-      .eq('is_processed', true)
+      // REMOVED strict is_processed=true requirement to allow raw articles as fallback
+      // .eq('is_processed', true) 
       .gte('fetched_at', yesterday.toISOString())
       .order('published_at', { ascending: false });
 
-    if (testEmail) query24h = query24h.limit(20);
+    // Increased limit to 30 for Pro feel
+    if (testEmail) query24h = query24h.limit(30);
 
     let { data: allArticles, error: articlesError } = await query24h;
 
-    // Retry Logic: If 24h is empty (or very low), look back 3 days (72h) or just get latest absolute
-    if (!articlesError && (!allArticles || allArticles.length < 2)) {
-      console.log("Smart Window: < 2 articles in 24h. Expanding search window...");
+    // Retry Logic: If empty, look back 5 days (120h)
+    if (!articlesError && (!allArticles || allArticles.length < 5)) {
+      console.log("Smart Window: Low volume in 48h. Expanding search window...");
 
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
       let queryFallback = supabase
         .from('articles')
         .select('*')
-        .eq('is_processed', true)
-        .gte('fetched_at', threeDaysAgo.toISOString()) // Last 3 days
+        .gte('fetched_at', fiveDaysAgo.toISOString()) // Last 5 days
         .order('published_at', { ascending: false })
-        .limit(15);
+        .limit(30);
 
       const { data: fallbackData } = await queryFallback;
 
       if (fallbackData && fallbackData.length > 0) {
-        console.log(`Smart Window: Found ${fallbackData.length} articles in 3-day window.`);
+        console.log(`Smart Window: Found ${fallbackData.length} articles in 5-day window.`);
         allArticles = fallbackData;
-      } else {
-        // Ultimate fallback: Just get whatever is in the DB
-        console.log("Smart Window: 3-day is empty. Fetching absolute latest...");
-        const { data: ultimateData } = await supabase
-          .from('articles')
-          .select('*')
-          .eq('is_processed', true)
-          .order('fetched_at', { ascending: false })
-          .limit(15);
-        allArticles = ultimateData || [];
       }
     }
 
@@ -147,11 +138,37 @@ serve(async (req) => {
           }
         } else {
           // Filter articles relevant to subscriber's exams
+          // Filter articles relevant to subscriber's exams
           relevantArticles = (allArticles || []).filter(article => {
             const articleExams = article.exam_tags || [];
             const subscriberExams = subscriber.selected_exams || [];
-            return articleExams.some((tag: string) => subscriberExams.includes(tag));
-          }).slice(0, 15); // Max 15 articles per email
+
+            // 1. AI Match
+            if (articleExams.some((tag: string) => subscriberExams.includes(tag))) {
+              return true;
+            }
+
+            // 2. Fallback: Source Mapping (If AI hasn't tagged it yet)
+            // If article is unprocessed, we infer relevance from source/category
+            const category = article.category || '';
+            const source = article.source || '';
+            const title = (article.title || '').toLowerCase();
+
+            // Broad "News" categories logic
+            if (subscriberExams.includes('rbi_grade_b') && (
+              title.includes('rbi') || category.includes('rbi') || source.includes('RBI'))) return true;
+
+            if (subscriberExams.includes('sebi_grade_a') && (
+              title.includes('sebi') || category.includes('sebi') || source.includes('SEBI'))) return true;
+
+            if (subscriberExams.includes('upsc_cse') && (
+              source.includes('PIB') || source.includes('Hindu'))) return true;
+
+            // "Current Affairs" bucket catches everything else broad
+            if (subscriberExams.includes('financial_awareness') || subscriberExams.includes('current_affairs')) return true;
+
+            return false;
+          }).slice(0, 30); // Max 30 articles per email
 
           // If test mode and no relevant articles, force send anyway with whatever we have
           if (relevantArticles.length === 0 && testEmail) {
