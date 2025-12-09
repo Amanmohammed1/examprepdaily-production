@@ -70,6 +70,11 @@ export function generateEmailHtml(articles: any[], subscriberExams: string[]): s
     // Group articles by category
     const groupedArticles: Record<string, any[]> = {};
     for (const article of articles) {
+        // SAFETY FILTER: Never show articles with AI Errors
+        if (article.summary && (article.summary.includes('AI Error') || article.summary.includes('Auto-Generated'))) {
+            continue;
+        }
+
         const category = article.category || 'other';
         if (!groupedArticles[category]) {
             groupedArticles[category] = [];

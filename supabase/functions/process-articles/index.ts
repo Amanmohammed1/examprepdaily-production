@@ -29,13 +29,9 @@ serve(async (req) => {
     const { count: totalCount } = await supabase.from('articles').select('*', { count: 'exact', head: true });
     console.log(`DEBUG: Total articles in DB: ${totalCount}`);
 
-    let force = false;
-    try {
-      const body = await req.json();
-      force = body.force;
-    } catch {
-      // Body might be empty
-    }
+    // Read body once
+    const body = await req.json().catch(() => ({}));
+    const { force, reprocess_errors } = body;
 
     let query = supabase
       .from('articles')
@@ -45,7 +41,11 @@ serve(async (req) => {
       // This prevents 429 Errors and ensures steady, reliable processing.
       .limit(10);
 
-    if (!force) {
+    if (reprocess_errors) {
+      console.log("⚠️ REPROCESS ERRORS MODE: Targeting articles with AI failures");
+      query = query.like('summary', '%AI Error%');
+      // Ignore is_processed flag for this specific rescue mission
+    } else if (!force) {
       query = query.eq('is_processed', false);
     } else {
       console.log("⚠️ FORCE MODE: Reprocessing ALL articles");
