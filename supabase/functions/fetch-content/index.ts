@@ -169,7 +169,7 @@ async function scrapeNABARD(): Promise<ArticleItem[]> {
 }
 
 async function scrapePIB(): Promise<ArticleItem[]> {
-  const url = 'https://pib.gov.in/allRel.aspx';
+  const url = 'https://pib.gov.in/allRel.aspx?l=1'; // Force English
   try {
     const response = await fetch(url);
     const html = await response.text();
@@ -338,6 +338,101 @@ async function scrapeTheHinduOpinions(): Promise<ArticleItem[]> {
   }
 }
 
+// --- NEW SOURCES ---
+
+async function scrapeLiveMintBanking(): Promise<ArticleItem[]> {
+  console.log("Scraping LiveMint Banking...");
+  const url = 'https://www.livemint.com/rss/industry/banking';
+  try {
+    const response = await fetch(url);
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    const items: ArticleItem[] = [];
+
+    $("item").each((_, element) => {
+      const title = $(element).find("title").text();
+      const link = $(element).find("link").text();
+      const pubDate = $(element).find("pubDate").text();
+      if (title && link) {
+        items.push({
+          title: title.trim(),
+          url: link.trim(),
+          source: "LiveMint Banking",
+          category: "banking",
+          published_at: new Date(pubDate),
+          original_summary: $(element).find("description").text()
+        });
+      }
+    });
+    return items.slice(0, 10);
+  } catch (e) {
+    console.error("Error scraping LiveMint:", e);
+    return [];
+  }
+}
+
+async function scrapeHinduBusiness(): Promise<ArticleItem[]> {
+  console.log("Scraping Hindu Business...");
+  const url = 'https://www.thehindu.com/business/Feeds/RSS.xml';
+  try {
+    const response = await fetch(url);
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    const items: ArticleItem[] = [];
+
+    $("item").each((_, element) => {
+      const title = $(element).find("title").text();
+      const link = $(element).find("link").text();
+      const pubDate = $(element).find("pubDate").text();
+      if (title && link) {
+        items.push({
+          title: title.trim(),
+          url: link.trim(),
+          source: "The Hindu Business",
+          category: "economy",
+          published_at: new Date(pubDate),
+          original_summary: $(element).find("description").text()
+        });
+      }
+    });
+    return items.slice(0, 10);
+  } catch (e) {
+    console.error("Error scraping Hindu Business:", e);
+    return [];
+  }
+}
+
+async function scrapeHTEducation(): Promise<ArticleItem[]> {
+  console.log("Scraping HT Education...");
+  const url = 'https://www.hindustantimes.com/feeds/rss/education/exam-results';
+  try {
+    const response = await fetch(url);
+    const xml = await response.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    const items: ArticleItem[] = [];
+
+    $("item").each((_, element) => {
+      const title = $(element).find("title").text();
+      const link = $(element).find("link").text();
+      const pubDate = $(element).find("pubDate").text();
+      if (title && link) {
+        items.push({
+          title: title.trim(),
+          url: link.trim(),
+          source: "HT Education",
+          category: "other", // Will be tagged by rules/AI
+          published_at: new Date(pubDate),
+          original_summary: $(element).find("description").text()
+        });
+      }
+    });
+    return items.slice(0, 10);
+  } catch (e) {
+    console.error("Error scraping HT Education:", e);
+    return [];
+  }
+}
+
 // --- MAIN HANDLER ---
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -359,7 +454,10 @@ serve(async (req) => {
       scrapeIBPS(),
       scrapeLIC(),
       scrapeAffairsCloud(),
-      scrapeTheHinduOpinions() // New Source
+      scrapeTheHinduOpinions(),
+      scrapeLiveMintBanking(),
+      scrapeHinduBusiness(),
+      scrapeHTEducation()
     ]);
 
     let totalSaved = 0;

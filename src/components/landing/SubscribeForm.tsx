@@ -42,62 +42,46 @@ const SubscribeForm = ({ id }: SubscribeFormProps) => {
     setLoading(true);
 
     try {
-      const verificationToken = crypto.randomUUID();
+      console.log("Subscribing via RPC:", email);
 
-      // Check if user already exists
-      const { data: existingUser } = await supabase
-        .from('subscribers')
-        .select('selected_exams')
-        .eq('email', email)
-        .single();
+      const { data, error } = await supabase.rpc('handle_new_subscription', {
+        p_email: email,
+        p_selected_exams: selectedExams
+      });
 
-      if (existingUser) {
-        // Merge exams
-        const mergedExams = [...new Set([...(existingUser.selected_exams || []), ...selectedExams])];
+      if (error) throw error;
 
-        const { error: updateError } = await supabase
-          .from('subscribers')
-          .update({ selected_exams: mergedExams })
-          .eq('email', email);
+      console.log("Subscription Result:", data);
 
-        if (updateError) throw updateError;
+      const result = Array.isArray(data) ? data[0] : data; // RPC can return array
 
+      if (result?.status === 'updated') {
         toast({
           title: "Subscription Updated",
           description: "We've added these exams to your existing preferences.",
         });
-        setSuccess(true);
       } else {
-        // New Subscriber
-        const { error } = await supabase
-          .from('subscribers')
-          .insert({
-            email,
-            selected_exams: selectedExams,
-            verification_token: verificationToken,
-            is_verified: true, // Auto-verify for MVP
-          });
-
-        if (error) throw error;
-
         toast({
           title: "Successfully subscribed!",
           description: "You'll receive your first daily digest soon.",
         });
 
-        // Trigger welcome email
+        // Trigger welcome email only on NEW insert
         try {
           const { error } = await supabase.functions.invoke('send-welcome', {
             body: { email }
           });
           if (error) console.error("Welcome email failed:", error);
         } catch (e) { console.warn("Welcome email error:", e); }
-
-        setSuccess(true);
       }
+
+      setSuccess(true);
+
+    } catch (error: any) {
+      console.error('Subscription error:', error);
       toast({
         title: "Subscription failed",
-        description: "Something went wrong. Please try again.",
+        description: error.message || "Something went wrong. Please check your connection.",
         variant: "destructive",
       });
     } finally {

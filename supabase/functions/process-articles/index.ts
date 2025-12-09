@@ -41,7 +41,7 @@ serve(async (req) => {
       .from('articles')
       .select('*')
       .order('fetched_at', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (!force) {
       query = query.eq('is_processed', false);
@@ -71,151 +71,139 @@ serve(async (req) => {
     }
 
     let processedCount = 0;
+    let debugLastAiRaw = "No AI call made";
 
     for (const article of articles) {
       try {
+        // ... (existing code for loop)
         console.log(`Processing: ${article.title}`);
 
-        let summary = "Summary pending AI processing.";
-        let key_points = ["Check official document for details.", "Key points not yet extracted.", "Pending AI analysis."];
+        // Initialize robust defaults (but don't overwrite if AI is going to run)
+        let summary = "Summary pending processing.";
+        let key_points = ["Details pending."];
         let exam_tags: string[] = [];
         const lowerTitle = article.title.toLowerCase();
         const source = (article.source_name || '').toUpperCase();
-        const category = article.category || '';
+        let finalTitle = article.title;
 
-        if (hasAI) {
-          // Placeholder for real AI call
-          console.log("AI Key present but implementation minimal. using placeholder.");
-          // In real implementation, we would call LLM here.
-          // For now, we fall through to the robust rule-based logic below as a baseline, 
-          // or we could assume the LLM would return tags.
-          // Let's use the rule-based logic as a reliable fallback/baseline even if AI is present for this MVP phase.
+        // 1. RULE-BASED TAGGING (Baseline for everyone)
+        // We calculate this first, but only apply text summaries if AI is disabled/fails.
+        let ruleBasedSummary = `(Auto-Generated) This article '${article.title}' was fetched from ${article.source_name}. Check official source.`;
+        let ruleBasedKeyPoints = [
+          `Published: ${new Date(article.published_at).toLocaleDateString()}`,
+          `Source: ${article.source_name}`,
+          "Tap 'Read original' for details."
+        ];
+
+        // Source/Keyword Analysis (Always useful for tags)
+        if (source.includes('RBI')) { exam_tags.push('rbi_grade_b', 'ibps_po'); }
+        if (source.includes('SEBI')) { exam_tags.push('sebi_grade_a', 'rbi_grade_b'); }
+        if (source.includes('NABARD')) { exam_tags.push('nabard_grade_a', 'rbi_grade_b'); }
+        if (source.includes('PIB')) { exam_tags.push('rbi_grade_b', 'nabard_grade_a', 'upsc_cse'); }
+        if (source.includes('HINDU') || source.includes('MINT') || source.includes('BUSINESS')) {
+          exam_tags.push('current_affairs', 'rbi_grade_b', 'ibps_po', 'ssc_cgl');
         }
+        if (source.includes('SSC')) { exam_tags.push('ssc_cgl'); }
+        if (source.includes('IBPS')) { exam_tags.push('ibps_po', 'ibps_clerk'); }
+        if (source.includes('LIC')) { exam_tags.push('lic_aao'); }
+        if (lowerTitle.includes('bank')) exam_tags.push('ibps_po');
+        if (lowerTitle.includes('agri')) exam_tags.push('nabard_grade_a');
 
-        // ROBUST RULE-BASED TAGGING (Mock Mode / Fallback)
-        if (!hasAI || true) { // Always run this for now to ensure quality tags
-          console.log("Generating Smart Tags...");
-          summary = `(Auto-Generated) This article '${article.title}' was fetched from ${article.source_name}. Please verify details in the official link.`;
-          key_points = [
-            `Published on: ${new Date(article.published_at).toLocaleDateString()}`,
-            `Source: ${article.source_name}`,
-            "Tap 'Read original' for full details."
-          ];
+        exam_tags = [...new Set(exam_tags)];
+        if (exam_tags.length === 0) exam_tags.push('rbi_grade_b'); // Default
 
-          // Source-based Tagging
-          if (source.includes('RBI')) {
-            exam_tags.push('rbi_grade_b');
-            exam_tags.push('ibps_po');
-          }
-          if (source.includes('SEBI')) {
-            exam_tags.push('sebi_grade_a');
-            exam_tags.push('rbi_grade_b'); // Finance syllabus
-          }
-          if (source.includes('NABARD')) {
-            exam_tags.push('nabard_grade_a');
-            exam_tags.push('rbi_grade_b'); // ESI syllabus
-          }
-          if (source.includes('PIB')) {
-            exam_tags.push('rbi_grade_b'); // Gov Schemes
-            exam_tags.push('nabard_grade_a'); // Rural Schemes
-            exam_tags.push('upsc_cse'); // General Policy
-          }
-          if (source.includes('HINDU') || source.includes('AFFAIRSCLOUD')) {
-            exam_tags.push('current_affairs');
-            exam_tags.push('rbi_grade_b'); // GA is relevant for all
-            exam_tags.push('ibps_po');
-            exam_tags.push('ssc_cgl');
-          }
-          if (source.includes('SSC')) {
-            exam_tags.push('ssc_cgl');
-          }
-          if (source.includes('IBPS')) {
-            exam_tags.push('ibps_po');
-            exam_tags.push('ibps_clerk');
-          }
-          if (source.includes('LIC')) {
-            exam_tags.push('lic_aao');
-          }
-
-          // Keyword-based refinement
-          if (lowerTitle.includes('bank')) exam_tags.push('ibps_po');
-          if (lowerTitle.includes('agri') || lowerTitle.includes('farm')) exam_tags.push('nabard_grade_a');
-          if (lowerTitle.includes('cgl') || lowerTitle.includes('chsl')) exam_tags.push('ssc_cgl');
-          if (lowerTitle.includes('insurance') || lowerTitle.includes('life')) exam_tags.push('lic_aao');
-          if (lowerTitle.includes('budget') || lowerTitle.includes('economic survey')) exam_tags.push('current_affairs');
-
-          // Deduplicate
-          exam_tags = [...new Set(exam_tags)];
-
-          // Fallback if no tags found
-          if (exam_tags.length === 0) exam_tags.push('rbi_grade_b');
-        }
+        // 2. AI PROCESSING
+        let lastAiRaw = "";
 
         if (hasAI) {
           try {
+            console.log("🤖 Initializing AI Model...");
             const { GoogleGenerativeAI } = await import("npm:@google/generative-ai");
+
+            if (!geminiKey && !openaiKey && !lovableKey) {
+              throw new Error("No AI API Keys found in environment!");
+            }
+
             const genAI = new GoogleGenerativeAI(geminiKey || openaiKey || lovableKey || '');
             const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
             const prompt = `
-             You are an expert exam analyst for Indian Competitive Exams (RBI, UPSC, NABARD).
-             Analyze this article title and source.
-             
+             Analyze this:
              Title: ${article.title}
              Source: ${article.source_name}
-             Link: ${article.original_url}
+             Original Link: ${article.original_url || 'N/A'}
              
-             TASK: Provide a "Short & Crisp" summary in JSON format.
-             - Summary: 2 sentences max. Focus on impact/action.
-             - Key Points: Strictly 3 bullet points. Each point max 10 words. Focus on Dates, Numbers, Names.
+             TASK: return a valid JSON object.
+             1. If the Title/Content is in Hindi or any other language, TRANSLATE IT TO ENGLISH.
+             2. Provide a "Short & Crisp" summary in English.
              
-             Output Format (JSON):
              {
-               "summary": "Exam Relevance: <High/Medium>. [Concise Summary]",
-               "key_points": [
-                 "Fact 1 (e.g., 'Penalty: ₹5.00 Lakh on Yavatmal Bank')",
-                 "Fact 2 (e.g., 'Reason: KYV violation')",
-                 "Fact 3 (e.g., 'Act: Banking Regulation Act, 1949')"
-               ],
-               "exam_tags": ["rbi_grade_b", ...] 
+               "translated_title": "Video Conference by PM... (Only if original was non-English, else null)",
+               "summary": "Start with 'Exam Relevance: High/Medium'. Then 2 sentences max summary.",
+               "key_points": ["Point 1 (max 8 words)", "Point 2 (max 8 words)", "Point 3"],
+               "exam_tags": ["rbi_grade_b", "upsc_cse"]
              }
+             STRICTLY JSON. NO MARKDOWN. NO \`\`\`.
              `;
 
+            console.log("🤖 Sending prompt...");
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const text = response.text();
+            debugLastAiRaw = text; // DEBUG STORE
 
-            // Simple clean of code blocks if any
+            console.log("🤖 Received:", text.substring(0, 50));
+
+            // Aggressive Cleanup
             const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
             const aiData = JSON.parse(jsonStr);
 
             if (aiData.summary) summary = aiData.summary;
             if (aiData.key_points && Array.isArray(aiData.key_points)) key_points = aiData.key_points;
-            // Merge AI tags with Rule-based tags (prioritize AI but keep rules as backup)
+
+            // Merge/Enhance tags
             if (aiData.exam_tags && Array.isArray(aiData.exam_tags)) {
               exam_tags = [...new Set([...exam_tags, ...aiData.exam_tags])];
             }
 
-            console.log("✅ AI Generation Successful for:", article.title);
-
-          } catch (aiError) {
-            console.error("❌ AI Generation Failed, falling back to rules:", aiError);
-            // Verify fallback summary is set
-            if (summary === "Summary pending AI processing.") {
-              summary = `(Fallback) ${article.title} - Check official source.`;
+            // Handle Title Translation
+            let finalTitle = article.title;
+            if (aiData.translated_title && aiData.translated_title !== article.title) {
+              console.log(`✨ Translating Title: ${article.title} -> ${aiData.translated_title}`);
+              finalTitle = aiData.translated_title;
             }
+
+            console.log("✅ AI Success");
+
+          } catch (aiError: any) {
+            console.error("❌ AI Failed:", aiError);
+            // CRITICAL: Explicitly use Fallback + Error Message so we know it failed
+            summary = ruleBasedSummary + ` (AI Error: ${aiError.message.substring(0, 20)}...)`;
+            key_points = ruleBasedKeyPoints;
           }
+        } else {
+          // No AI Configured
+          summary = ruleBasedSummary;
+          key_points = ruleBasedKeyPoints;
+        }
+
+        // Prepare update object
+        const updateData: any = {
+          summary: summary,
+          key_points: key_points,
+          exam_tags: exam_tags,
+          is_processed: true,
+          processed_at: new Date().toISOString(),
+        };
+
+        // Only update title if it changed (optimization)
+        if (typeof finalTitle !== 'undefined' && finalTitle !== article.title) {
+          updateData.title = finalTitle;
         }
 
         await supabase
           .from('articles')
-          .update({
-            summary: summary,
-            key_points: key_points,
-            exam_tags: exam_tags,
-            is_processed: true,
-            processed_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', article.id);
 
         processedCount++;
@@ -226,18 +214,30 @@ serve(async (req) => {
       }
     }
 
+    // Final response with debug info
     return new Response(
       JSON.stringify({
         success: true,
         message: `Processed ${processedCount} of ${articles.length} articles`,
-        ai_enabled: hasAI
+        ai_enabled: hasAI,
+        ai_status: hasAI ? (processedCount > 0 ? "Attempted" : "Skipped (No Config)") : "Disabled",
+        debug_key_present: !!geminiKey,
+        debug_last_ai_raw: debugLastAiRaw,
+        last_ai_error: null // We don't bubble individual item errors to global, but logs show them
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
     console.error('Error in process-articles:', error);
     return new Response(
-      JSON.stringify({ error: error?.message || 'Unknown error' }),
+      JSON.stringify({
+        error: error?.message || 'Unknown error',
+        details: JSON.stringify(error),
+        env_check: {
+          has_gemini: !!Deno.env.get('GEMINI_API_KEY'),
+          has_openai: !!Deno.env.get('OPENAI_API_KEY')
+        }
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
