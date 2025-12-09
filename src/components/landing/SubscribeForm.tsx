@@ -67,12 +67,15 @@ const SubscribeForm = ({ id }: SubscribeFormProps) => {
         });
 
         // Trigger welcome email only on NEW insert
+        // Trigger immediate digest for new users
         try {
-          const { error } = await supabase.functions.invoke('send-welcome', {
-            body: { email }
+          console.log("Triggering Welcome Digest...");
+          // We use 'testEmail' param to force a single email send to this user immediately
+          const { error } = await supabase.functions.invoke('send-digest', {
+            body: { testEmail: email }
           });
-          if (error) console.error("Welcome email failed:", error);
-        } catch (e) { console.warn("Welcome email error:", e); }
+          if (error) console.error("Welcome digest failed:", error);
+        } catch (e) { console.warn("Welcome digest error:", e); }
       }
 
       setSuccess(true);

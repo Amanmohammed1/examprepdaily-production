@@ -37,9 +37,8 @@ serve(async (req) => {
       .from('articles')
       .select('*')
       .order('fetched_at', { ascending: false })
-      // OPTIMIZATION: Batch size reduced to 10 to respect Gemini Free Tier (15 RPM).
-      // This prevents 429 Errors and ensures steady, reliable processing.
-      .limit(10);
+      // OPTIMIZATION: Batch size set to 15 to balance throughput with Gemini Free Tier (15 RPM).
+      .limit(15);
 
     if (reprocess_errors) {
       console.log("⚠️ REPROCESS ERRORS MODE: Targeting articles with AI failures");

@@ -169,7 +169,7 @@ async function scrapeNABARD(): Promise<ArticleItem[]> {
 }
 
 async function scrapePIB(): Promise<ArticleItem[]> {
-  const url = 'https://pib.gov.in/allRel.aspx?l=1'; // Force English
+  const url = 'https://pib.gov.in/allRel.aspx?reg=3&lang=1'; // User-verified English URL
   try {
     const response = await fetch(url);
     const html = await response.text();
@@ -178,7 +178,13 @@ async function scrapePIB(): Promise<ArticleItem[]> {
 
     $('a[href*="/PressReleasePage.aspx?PRID="]').each((i, el) => {
       const href = $(el).attr('href');
-      const title = $(el).attr('title') || $(el).text().trim();
+      // FIX: Prioritize visible text! Tooltips (attr-title) are often bilingual/Hindi.
+      // Also clean up any extra whitespace or newlines.
+      const text = $(el).text().trim();
+      const tooltip = $(el).attr('title') || '';
+
+      const title = text.length > 5 ? text : tooltip;
+
       if (href && title) {
         items.push({
           title: title,
