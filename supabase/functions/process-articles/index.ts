@@ -152,18 +152,58 @@ serve(async (req) => {
         }
 
         if (hasAI) {
-          // We would inject the system prompt here. 
-          // Since we are mocking, we will just simulate the "Enhanced Prompt" output structure in the description for now?
-          // No, user specifically asked for current affairs to be "OP". 
-          // I will update the Mock Summary to look "OP" too if source is Hindu/AffairsCloud.
+          try {
+            const { GoogleGenerativeAI } = await import("npm:@google/generative-ai");
+            const genAI = new GoogleGenerativeAI(geminiKey || openaiKey || lovableKey || '');
+            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-          if (source.includes('HINDU') || source.includes('AFFAIRSCLOUD')) {
-            summary = `(AI Enhanced) **Exam Relevance: High**\n\nThis article pertains to current developments in ${category || 'General Awareness'}. Key takeaways for aspirants:\n- Critical analysis of recent policy shifts.\n- Impact on banking sector/economy.\n\nRecommended for: RBI Grade B (ESI), UPSC CSE, and NABARD Grade A.`;
-            key_points = [
-              "Fact 1: Check official source for statistical data.",
-              "Fact 2: Note the dates and ministry involved.",
-              "Fact 3: Correlate with static syllabus."
-            ];
+            const prompt = `
+             You are an expert exam analyst for Indian Competitive Exams (RBI, UPSC, NABARD).
+             Analyze this article title and source.
+             
+             Title: ${article.title}
+             Source: ${article.source_name}
+             Link: ${article.original_url}
+             
+             TASK: Provide a "Short & Crisp" summary in JSON format.
+             - Summary: 2 sentences max. Focus on impact/action.
+             - Key Points: Strictly 3 bullet points. Each point max 10 words. Focus on Dates, Numbers, Names.
+             
+             Output Format (JSON):
+             {
+               "summary": "Exam Relevance: <High/Medium>. [Concise Summary]",
+               "key_points": [
+                 "Fact 1 (e.g., 'Penalty: ₹5.00 Lakh on Yavatmal Bank')",
+                 "Fact 2 (e.g., 'Reason: KYV violation')",
+                 "Fact 3 (e.g., 'Act: Banking Regulation Act, 1949')"
+               ],
+               "exam_tags": ["rbi_grade_b", ...] 
+             }
+             `;
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            // Simple clean of code blocks if any
+            const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            const aiData = JSON.parse(jsonStr);
+
+            if (aiData.summary) summary = aiData.summary;
+            if (aiData.key_points && Array.isArray(aiData.key_points)) key_points = aiData.key_points;
+            // Merge AI tags with Rule-based tags (prioritize AI but keep rules as backup)
+            if (aiData.exam_tags && Array.isArray(aiData.exam_tags)) {
+              exam_tags = [...new Set([...exam_tags, ...aiData.exam_tags])];
+            }
+
+            console.log("✅ AI Generation Successful for:", article.title);
+
+          } catch (aiError) {
+            console.error("❌ AI Generation Failed, falling back to rules:", aiError);
+            // Verify fallback summary is set
+            if (summary === "Summary pending AI processing.") {
+              summary = `(Fallback) ${article.title} - Check official source.`;
+            }
           }
         }
 

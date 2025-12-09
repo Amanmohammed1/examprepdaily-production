@@ -44,35 +44,42 @@ const SubscribeForm = ({ id }: SubscribeFormProps) => {
     try {
       const verificationToken = crypto.randomUUID();
 
-      const { error } = await supabase
+      // Check if user already exists
+      const { data: existingUser } = await supabase
         .from('subscribers')
-        .insert({
-          email,
-          selected_exams: selectedExams,
-          verification_token: verificationToken,
-          is_verified: true, // Auto-verify for MVP
-        });
+        .select('selected_exams')
+        .eq('email', email)
+        .single();
 
-      if (error) {
-        if (error.code === '23505') {
-          toast({
-            title: "Already subscribed",
-            description: "This email is already subscribed. We'll send your next digest soon!",
-          });
-          setSuccess(true);
-        } else if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
-          // Table missing - Fallback to Demo Mode
-          console.warn("Subscribers table missing. Falling back to Demo Mode.");
-          setSuccess(true);
-          toast({
-            title: "Demo Mode Active",
-            description: "Database not ready yet, but you can test the email flow!",
-          });
-        } else {
-          throw error;
-        }
-      } else {
+      if (existingUser) {
+        // Merge exams
+        const mergedExams = [...new Set([...(existingUser.selected_exams || []), ...selectedExams])];
+
+        const { error: updateError } = await supabase
+          .from('subscribers')
+          .update({ selected_exams: mergedExams })
+          .eq('email', email);
+
+        if (updateError) throw updateError;
+
+        toast({
+          title: "Subscription Updated",
+          description: "We've added these exams to your existing preferences.",
+        });
         setSuccess(true);
+      } else {
+        // New Subscriber
+        const { error } = await supabase
+          .from('subscribers')
+          .insert({
+            email,
+            selected_exams: selectedExams,
+            verification_token: verificationToken,
+            is_verified: true, // Auto-verify for MVP
+          });
+
+        if (error) throw error;
+
         toast({
           title: "Successfully subscribed!",
           description: "You'll receive your first daily digest soon.",
@@ -83,19 +90,11 @@ const SubscribeForm = ({ id }: SubscribeFormProps) => {
           const { error } = await supabase.functions.invoke('send-welcome', {
             body: { email }
           });
-          if (error) throw error;
-        } catch (error) {
-          console.warn("Backend function 'send-welcome' missing or failed. Is it deployed?", error);
-          console.info(">> [DEMO MODE] Simulated Welcome Email to:", email);
-          toast({
-            title: "Demo Mode: Email Logged",
-            description: "Backend not connected. Check console for email preview.",
-            variant: "default",
-          });
-        }
+          if (error) console.error("Welcome email failed:", error);
+        } catch (e) { console.warn("Welcome email error:", e); }
+
+        setSuccess(true);
       }
-    } catch (error) {
-      console.error('Subscription error:', error);
       toast({
         title: "Subscription failed",
         description: "Something went wrong. Please try again.",
