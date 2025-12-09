@@ -464,7 +464,10 @@ serve(async (req) => {
     const details = [];
 
     // Names for logging
-    const names = ['RBI Notif', 'RBI Press', 'SEBI', 'NABARD', 'PIB', 'SSC', 'IBPS', 'LIC', 'AffairsCloud', 'The Hindu'];
+    const names = [
+      'RBI Notif', 'RBI Press', 'SEBI', 'NABARD', 'PIB', 'SSC', 'IBPS', 'LIC',
+      'AffairsCloud', 'The Hindu Opinion', 'LiveMint Banking', 'Hindu Business', 'HT Education'
+    ];
 
     for (let i = 0; i < results.length; i++) {
       const res = results[i];

@@ -41,7 +41,9 @@ serve(async (req) => {
       .from('articles')
       .select('*')
       .order('fetched_at', { ascending: false })
-      .limit(100);
+      // OPTIMIZATION: Batch size reduced to 10 to respect Gemini Free Tier (15 RPM).
+      // This prevents 429 Errors and ensures steady, reliable processing.
+      .limit(10);
 
     if (!force) {
       query = query.eq('is_processed', false);
@@ -125,7 +127,15 @@ serve(async (req) => {
             }
 
             const genAI = new GoogleGenerativeAI(geminiKey || openaiKey || lovableKey || '');
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            const model = genAI.getGenerativeModel({
+              model: "gemini-flash-latest",
+              safetySettings: [
+                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+              ]
+            });
 
             const prompt = `
              Analyze this:
@@ -177,8 +187,8 @@ serve(async (req) => {
 
           } catch (aiError: any) {
             console.error("❌ AI Failed:", aiError);
-            // CRITICAL: Explicitly use Fallback + Error Message so we know it failed
-            summary = ruleBasedSummary + ` (AI Error: ${aiError.message.substring(0, 20)}...)`;
+            const errStr = JSON.stringify(aiError, Object.getOwnPropertyNames(aiError));
+            summary = ruleBasedSummary + ` (AI Error: ${errStr.substring(0, 200)})`;
             key_points = ruleBasedKeyPoints;
           }
         } else {
