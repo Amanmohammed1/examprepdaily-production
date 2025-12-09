@@ -93,7 +93,8 @@ serve(async (req) => {
       console.log("Smart Window: Low volume in 48h. Expanding search window...");
 
       const fiveDaysAgo = new Date();
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      // If it's a test email (Welcome digest), look back 7 days to ensure they get something
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - (testEmail ? 7 : 5));
 
       let queryFallback = supabase
         .from('articles')
@@ -126,12 +127,20 @@ serve(async (req) => {
         let subject = '';
 
         if (!allArticles || allArticles.length === 0) {
-          // Fallback for "No Articles" - ONLY for test emails to prove it works
+          // Fallback: If absolutely no articles found even after 5-day lookback
           if (testEmail) {
-            console.log("No articles found, forcing a dummy email for test.");
-            html = `<html><body><h1>System Working! ✅</h1><p>We found 0 new articles today, but your email delivery system is working perfectly via Gmail.</p></body></html>`;
-            subject = `✅ Test System Check - ${today}`;
-            relevantArticles = [{ title: 'System Check' }]; // Dummy to pass counts
+            console.log("Welcome Digest: No recent articles found. Sending 'No Updates' notification.");
+            html = `
+              <html>
+                <body style="font-family: sans-serif; color: #333;">
+                  <h1>Welcome to ExamPrep Daily! 🚀</h1>
+                  <p>You are successfully subscribed.</p>
+                  <p>We checked the last 5 days of news, but found no articles relevant to your specific exam selection just yet.</p>
+                  <p>Don't worry! Our scrapers run every hour. You will receive your first full digest as soon as news availability picks up.</p>
+                </body>
+              </html>`;
+            subject = `Welcome to ExamPrep Daily! (No new updates today)`;
+            relevantArticles = [{ title: 'Welcome - No Updates' }]; // Dummy to pass counts
           } else {
             console.log(`No articles for ${subscriber.email}`);
             continue;
