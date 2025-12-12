@@ -189,7 +189,7 @@ serve(async (req) => {
             continue;
           }
 
-          html = generateEmailHtml(relevantArticles, subscriber.selected_exams);
+          html = generateEmailHtml(relevantArticles, subscriber.selected_exams, subscriber.email);
           subject = `📬 Your Daily Digest - ${today} (${relevantArticles.length} updates)`;
         }
 

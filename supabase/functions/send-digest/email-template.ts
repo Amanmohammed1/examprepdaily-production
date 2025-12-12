@@ -57,7 +57,7 @@ const examLabels: Record<string, string> = {
     lic_aao: 'LIC AAO',
 };
 
-export function generateEmailHtml(articles: any[], subscriberExams: string[]): string {
+export function generateEmailHtml(articles: any[], subscriberExams: string[], subscriberEmail: string): string {
     const today = new Date().toLocaleDateString('en-IN', {
         weekday: 'long',
         year: 'numeric',
@@ -190,7 +190,7 @@ export function generateEmailHtml(articles: any[], subscriberExams: string[]): s
               ${EmailConfig.text.footerSubtext}
             </p>
             <p style="margin: 0; font-size: 11px;">
-              <a href="https://examprepdailydigest.vercel.app/unsubscribe?email=${subscriberExams ? 'subscriber' : 'subscriber'}" style="color: ${EmailConfig.theme.colors.mutedText}; text-decoration: underline;">
+              <a href="https://examprepdaily-main.vercel.app/unsubscribe?email=${subscriberEmail}" style="color: ${EmailConfig.theme.colors.mutedText}; text-decoration: underline;">
                 Unsubscribe
               </a>
             </p>

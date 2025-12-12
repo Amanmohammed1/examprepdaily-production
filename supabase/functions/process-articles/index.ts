@@ -266,6 +266,7 @@ serve(async (req) => {
           } catch (aiError: any) {
             console.error("❌ AI Failed:", aiError);
             const errStr = JSON.stringify(aiError, Object.getOwnPropertyNames(aiError));
+            debugLastAiRaw = `ERROR: ${errStr}`; // FORCE CAPTURE ERROR
 
             // SMART RETRY: If Rate Limit (429), don't save error text, just revert to clean summary and retry later.
             if (errStr.includes("429") || errStr.includes("Too Many Requests")) {
@@ -323,7 +324,9 @@ serve(async (req) => {
         ai_status: hasAI ? (processedCount > 0 ? "Attempted" : "Skipped (No Config)") : "Disabled",
         debug_key_present: !!geminiKey,
         debug_last_ai_raw: debugLastAiRaw,
-        last_ai_error: null // We don't bubble individual item errors to global, but logs show them
+        debug_key_present: !!geminiKey,
+        debug_last_ai_raw: debugLastAiRaw,
+        last_ai_error: debugLastAiRaw === "No AI call made" ? "Possible Error (Check Logs)" : null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
