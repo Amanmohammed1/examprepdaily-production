@@ -186,8 +186,13 @@ export function generateEmailHtml(articles: any[], subscriberExams: string[]): s
             <p style="margin: 0 0 10px 0; font-size: 13px; color: ${EmailConfig.theme.colors.secondaryText};">
               ${EmailConfig.text.footerText}
             </p>
-            <p style="margin: 0; font-size: 12px; color: ${EmailConfig.theme.colors.mutedText};">
+            <p style="margin: 0 0 10px 0; font-size: 12px; color: ${EmailConfig.theme.colors.mutedText};">
               ${EmailConfig.text.footerSubtext}
+            </p>
+            <p style="margin: 0; font-size: 11px;">
+              <a href="https://examprepdailydigest.vercel.app/unsubscribe?email=${subscriberExams ? 'subscriber' : 'subscriber'}" style="color: ${EmailConfig.theme.colors.mutedText}; text-decoration: underline;">
+                Unsubscribe
+              </a>
             </p>
           </td>
         </tr>

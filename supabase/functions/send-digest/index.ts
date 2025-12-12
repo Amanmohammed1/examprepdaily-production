@@ -88,8 +88,8 @@ serve(async (req) => {
 
     let { data: allArticles, error: articlesError } = await query24h;
 
-    // Retry Logic: If empty, look back 5 days (120h)
-    if (!articlesError && (!allArticles || allArticles.length < 5)) {
+    // Retry Logic: If empty or low volume (< 10), look back 5 days (120h)
+    if (!articlesError && (!allArticles || allArticles.length < 10)) {
       console.log("Smart Window: Low volume in 48h. Expanding search window...");
 
       const fiveDaysAgo = new Date();

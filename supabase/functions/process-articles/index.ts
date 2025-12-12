@@ -31,21 +31,69 @@ serve(async (req) => {
 
     // Read body once
     const body = await req.json().catch(() => ({}));
-    const { force, reprocess_errors } = body;
+    const { force, reprocess_errors, clean_mode } = body;
+
+    if (clean_mode) {
+      console.log("🧹 CLEAN MODE INIT: Scrubbing AI Errors from DB...");
+      // Fetch ALL articles with errors
+      const { data: errorArticles, error: scanError } = await supabase
+        .from('articles')
+        .select('*')
+        .like('summary', '%AI Error%')
+        .limit(50); // Fetch more
+
+      if (scanError) throw scanError;
+
+      if (errorArticles && errorArticles.length > 0) {
+        console.log(`🧹 Scrubbing ${errorArticles.length} error rows...`);
+        let cleanedCount = 0;
+        for (const article of errorArticles) {
+          try {
+            // Revert to clean rule-based summary
+            const cleanSummary = `(Auto-Generated) This article '${article.title}' was fetched from ${article.source_name}. Check official source.`;
+            await supabase
+              .from('articles')
+              .update({
+                summary: cleanSummary,
+                is_processed: false // Queue for retry
+              })
+              .eq('id', article.id);
+            cleanedCount++;
+          } catch (e) {
+            console.error("Scrub failed for", article.id);
+          }
+        }
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Scrubbed ${cleanedCount} articles in Clean Mode.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Clean Mode: No errors found.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     let query = supabase
       .from('articles')
       .select('*')
       .order('fetched_at', { ascending: false })
-      // OPTIMIZATION: Batch size set to 15 to balance throughput with Gemini Free Tier (15 RPM).
-      .limit(15);
+      // STABILITY FIX: Batch size reduced to 5 to prevent JSON truncation/timeout errors.
+      .limit(5);
 
     if (reprocess_errors) {
       console.log("⚠️ REPROCESS ERRORS MODE: Targeting articles with AI failures");
       query = query.like('summary', '%AI Error%');
       // Ignore is_processed flag for this specific rescue mission
     } else if (!force) {
-      query = query.eq('is_processed', false);
+      query = query.eq('is_processed', false); // PERFORMANCE: Only fetch what needs work
     } else {
       console.log("⚠️ FORCE MODE: Reprocessing ALL articles");
     }
@@ -55,6 +103,34 @@ serve(async (req) => {
 
     if (articlesError) {
       throw articlesError;
+    }
+
+    if (clean_mode && articles) {
+      console.log(`🧹 Scrubbing ${articles.length} error rows...`);
+      let cleanedCount = 0;
+      for (const article of articles) {
+        try {
+          // Revert to clean rule-based summary
+          const cleanSummary = `(Auto-Generated) This article '${article.title}' was fetched from ${article.source_name}. Check official source.`;
+          await supabase
+            .from('articles')
+            .update({
+              summary: cleanSummary,
+              is_processed: false // Queue for retry
+            })
+            .eq('id', article.id);
+          cleanedCount++;
+        } catch (e) {
+          console.error("Scrub failed for", article.id);
+        }
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: `Scrubbed ${cleanedCount} articles.`,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     console.log(`Found ${articles?.length || 0} unprocessed articles`);
@@ -83,6 +159,8 @@ serve(async (req) => {
         let summary = "Summary pending processing.";
         let key_points = ["Details pending."];
         let exam_tags: string[] = [];
+        let is_processed = true; // Default to true (done), unless 429 hits
+
         const lowerTitle = article.title.toLowerCase();
         const source = (article.source_name || '').toUpperCase();
         let finalTitle = article.title;
@@ -96,7 +174,7 @@ serve(async (req) => {
           "Tap 'Read original' for details."
         ];
 
-        // Source/Keyword Analysis (Always useful for tags)
+        // ... (Tags logic omitted for brevity as it is unchanged) ...
         if (source.includes('RBI')) { exam_tags.push('rbi_grade_b', 'ibps_po'); }
         if (source.includes('SEBI')) { exam_tags.push('sebi_grade_a', 'rbi_grade_b'); }
         if (source.includes('NABARD')) { exam_tags.push('nabard_grade_a', 'rbi_grade_b'); }
@@ -124,6 +202,8 @@ serve(async (req) => {
             if (!geminiKey && !openaiKey && !lovableKey) {
               throw new Error("No AI API Keys found in environment!");
             }
+
+            // ... (setup code omitted) ...
 
             const genAI = new GoogleGenerativeAI(geminiKey || openaiKey || lovableKey || '');
             const model = genAI.getGenerativeModel({
@@ -176,7 +256,6 @@ serve(async (req) => {
             }
 
             // Handle Title Translation
-            let finalTitle = article.title;
             if (aiData.translated_title && aiData.translated_title !== article.title) {
               console.log(`✨ Translating Title: ${article.title} -> ${aiData.translated_title}`);
               finalTitle = aiData.translated_title;
@@ -187,13 +266,25 @@ serve(async (req) => {
           } catch (aiError: any) {
             console.error("❌ AI Failed:", aiError);
             const errStr = JSON.stringify(aiError, Object.getOwnPropertyNames(aiError));
-            summary = ruleBasedSummary + ` (AI Error: ${errStr.substring(0, 200)})`;
-            key_points = ruleBasedKeyPoints;
+
+            // SMART RETRY: If Rate Limit (429), don't save error text, just revert to clean summary and retry later.
+            if (errStr.includes("429") || errStr.includes("Too Many Requests")) {
+              console.log("⏳ Rate Limit Hit: Reverting to clean summary & scheduling retry.");
+              summary = ruleBasedSummary; // Clean text for UI
+              key_points = ruleBasedKeyPoints;
+              is_processed = false; // RETRY LATER
+            } else {
+              // Genuine error: Log it visible so we debug
+              summary = ruleBasedSummary + ` (AI Error: ${errStr.substring(0, 200)})`;
+              key_points = ruleBasedKeyPoints;
+              is_processed = true; // Mark done
+            }
           }
         } else {
           // No AI Configured
           summary = ruleBasedSummary;
           key_points = ruleBasedKeyPoints;
+          is_processed = true;
         }
 
         // Prepare update object
@@ -201,7 +292,7 @@ serve(async (req) => {
           summary: summary,
           key_points: key_points,
           exam_tags: exam_tags,
-          is_processed: true,
+          is_processed: is_processed,
           processed_at: new Date().toISOString(),
         };
 

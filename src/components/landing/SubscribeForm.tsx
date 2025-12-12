@@ -116,33 +116,7 @@ const SubscribeForm = ({ id }: SubscribeFormProps) => {
               Subscribe another email
             </Button>
 
-            <div className="mt-8 pt-8 border-t border-border">
-              <p className="text-sm text-muted-foreground mb-4">Demo Controls</p>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={async () => {
-                  toast({ title: "Sending test digest..." });
-                  try {
-                    const { error } = await supabase.functions.invoke('send-digest', {
-                      body: { testEmail: email }
-                    });
-                    if (error) throw error;
-                    toast({ title: "Digest sent!", description: "Check your inbox." });
-                  } catch (e) {
-                    console.error("Digest invoke error:", e);
-                    // Optimistic Success - The backend often sends even if this times out
-                    toast({
-                      title: "Digest sent!",
-                      description: "It might take a minute to arrive.",
-                      variant: "default"
-                    });
-                  }
-                }}
-              >
-                Send Test Digest Now
-              </Button>
-            </div>
+
           </div>
         </div>
       </section>
