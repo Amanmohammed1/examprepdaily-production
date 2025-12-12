@@ -1,4 +1,5 @@
 import { Mail } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
@@ -24,9 +25,16 @@ const Header = ({ onSubscribe }: HeaderProps) => {
             <a href="#subscribe" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Subscribe
             </a>
+            <Link to="/live" className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
+              Live Feed
+            </Link>
           </nav>
 
-          <Button 
+          <Button
             onClick={onSubscribe}
             className="gradient-primary rounded-lg"
           >
